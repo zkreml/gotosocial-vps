@@ -61,7 +61,7 @@ SSHD_CONF="/etc/ssh/sshd_config"
 sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' "$SSHD_CONF"
 # Zakaz PasswordAuthentication (pouze klíče)
 sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' "$SSHD_CONF"
-systemctl reload sshd
+systemctl reload ssh.service
 
 # === UFW firewall ===
 echo "==> Konfigurace UFW firewallu..."

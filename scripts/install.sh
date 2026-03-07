@@ -80,17 +80,20 @@ fi
 
 CONFIG_FILE="$ROOT_DIR/config/config.yaml"
 NGINX_CONF="$ROOT_DIR/nginx/gotosocial.conf"
+NGINX_CONF_ZKREML="$ROOT_DIR/nginx/zkreml.cz.conf"
 
 echo ""
 echo "==> Nastavení konfigurace..."
 
 # Záloha originálů pro idempotentní opakované spuštění
-[ -f "${CONFIG_FILE}.orig" ] || cp "$CONFIG_FILE" "${CONFIG_FILE}.orig"
-[ -f "${NGINX_CONF}.orig"  ] || cp "$NGINX_CONF"  "${NGINX_CONF}.orig"
+[ -f "${CONFIG_FILE}.orig" ]      || cp "$CONFIG_FILE"      "${CONFIG_FILE}.orig"
+[ -f "${NGINX_CONF}.orig" ]       || cp "$NGINX_CONF"       "${NGINX_CONF}.orig"
+[ -f "${NGINX_CONF_ZKREML}.orig" ] || cp "$NGINX_CONF_ZKREML" "${NGINX_CONF_ZKREML}.orig"
 
 # Vždy pracuj z originálu
-cp "${CONFIG_FILE}.orig" "$CONFIG_FILE"
-cp "${NGINX_CONF}.orig"  "$NGINX_CONF"
+cp "${CONFIG_FILE}.orig"       "$CONFIG_FILE"
+cp "${NGINX_CONF}.orig"        "$NGINX_CONF"
+cp "${NGINX_CONF_ZKREML}.orig" "$NGINX_CONF_ZKREML"
 
 # config.yaml – host
 sed -i "s|host: \".*\"|host: \"${GTS_DOMAIN}\"|" "$CONFIG_FILE"
@@ -100,14 +103,26 @@ if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
   sed -i "s|# account-domain: \".*\"|account-domain: \"${GTS_ACCOUNT_DOMAIN}\"|" "$CONFIG_FILE"
 fi
 
-# nginx – server_name a references na doménu
-sed -i "s|server_name .*;|server_name ${GTS_DOMAIN};|g" "$NGINX_CONF"
-sed -i "s|vase-domena\.cz|${GTS_DOMAIN}|g" "$NGINX_CONF"
+# nginx gotosocial.conf – dosaď GTS_HOST
+sed -i "s|GTS_HOST|${GTS_DOMAIN}|g" "$NGINX_CONF"
 
-# Nasazení nginx konfigurace
+# nginx zkreml.cz.conf – dosaď ACCOUNT_DOMAIN a GTS_HOST
+if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
+  sed -i "s|ACCOUNT_DOMAIN|${GTS_ACCOUNT_DOMAIN}|g" "$NGINX_CONF_ZKREML"
+  sed -i "s|GTS_HOST|${GTS_DOMAIN}|g"               "$NGINX_CONF_ZKREML"
+fi
+
+# === Nasazení nginx konfigurací ===
 echo "==> Nasazení Nginx konfigurace..."
 cp "$NGINX_CONF" /etc/nginx/sites-available/gotosocial
 ln -sf /etc/nginx/sites-available/gotosocial /etc/nginx/sites-enabled/gotosocial
+
+if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
+  cp "$NGINX_CONF_ZKREML" "/etc/nginx/sites-available/${GTS_ACCOUNT_DOMAIN}"
+  ln -sf "/etc/nginx/sites-available/${GTS_ACCOUNT_DOMAIN}" \
+         "/etc/nginx/sites-enabled/${GTS_ACCOUNT_DOMAIN}"
+fi
+
 nginx -t
 systemctl reload nginx
 
@@ -136,14 +151,28 @@ $DC exec gotosocial /gotosocial/gotosocial admin account create \
 $DC exec gotosocial /gotosocial/gotosocial admin account promote \
   --username "$ADMIN_USER"
 
-# === SSL certifikát ===
+# === SSL certifikáty ===
 echo ""
-echo "==> Získání SSL certifikátu přes Certbot..."
+echo "==> Získání SSL certifikátu pro ${GTS_DOMAIN}..."
 certbot --nginx -d "$GTS_DOMAIN"
 
+if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
+  echo "==> Získání SSL certifikátu pro ${GTS_ACCOUNT_DOMAIN}..."
+  certbot --nginx -d "$GTS_ACCOUNT_DOMAIN"
+fi
+
+# === Hotovo ===
 echo ""
 echo "==> Instalace dokončena!"
-echo "    GoToSocial je dostupný na https://${GTS_DOMAIN}"
+echo ""
+echo "    GoToSocial:  https://${GTS_DOMAIN}"
 if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
+  echo "    Hlavní doména: https://${GTS_ACCOUNT_DOMAIN}"
   echo "    Účty budou mít formát @uživatel@${GTS_ACCOUNT_DOMAIN}"
+fi
+echo ""
+echo "NEZAPOMENOUT nastavit DNS záznamy:"
+echo "    ${GTS_DOMAIN}  -> IP tohoto serveru"
+if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
+  echo "    ${GTS_ACCOUNT_DOMAIN} -> IP tohoto serveru"
 fi
