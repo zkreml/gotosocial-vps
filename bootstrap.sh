@@ -2,6 +2,7 @@
 # bootstrap.sh – první nastavení čistého VPS
 # Spusťte jako root: bash bootstrap.sh
 set -euo pipefail
+export TERM=xterm-256color
 
 if [ "$EUID" -ne 0 ]; then
   echo "CHYBA: Spusťte jako root (sudo bash bootstrap.sh)." >&2
@@ -34,6 +35,9 @@ else
   usermod -aG sudo "$TARGET_USER"
   # Zamknutí hesla – přihlášení pouze přes SSH klíč
   passwd -l "$TARGET_USER"
+  # NOPASSWD sudo
+  echo "${TARGET_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${TARGET_USER}"
+  chmod 440 /etc/sudoers.d/"${TARGET_USER}"
   echo "    Uživatel vytvořen."
 fi
 

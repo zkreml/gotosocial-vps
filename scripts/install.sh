@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export TERM=xterm-256color
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,19 +11,9 @@ echo ""
 # === Interaktivní vstup ===
 read -rp "Doména serveru (např. social.example.cz): " GTS_DOMAIN
 read -rp "Account-domain (např. example.cz; Enter = shodná s doménou serveru): " GTS_ACCOUNT_DOMAIN
-read -rp "Admin uživatelské jméno: " ADMIN_USER
-read -rp "Admin e-mail: " ADMIN_EMAIL
-while true; do
-  read -rsp "Admin heslo: " ADMIN_PASS
-  echo ""
-  read -rsp "Admin heslo (znovu): " ADMIN_PASS2
-  echo ""
-  [ "$ADMIN_PASS" = "$ADMIN_PASS2" ] && break
-  echo "Hesla se neshodují, zkuste znovu."
-done
 
-if [ -z "$GTS_DOMAIN" ] || [ -z "$ADMIN_USER" ] || [ -z "$ADMIN_EMAIL" ] || [ -z "$ADMIN_PASS" ]; then
-  echo "CHYBA: Doména, admin uživatel, e-mail a heslo jsou povinné." >&2
+if [ -z "$GTS_DOMAIN" ]; then
+  echo "CHYBA: Doména je povinná." >&2
   exit 1
 fi
 
@@ -76,32 +67,21 @@ if ! command -v certbot &>/dev/null; then
   _install_certbot
 fi
 
-# === Konfigurace souborů ===
+# === Konfigurace nginx HTTP ===
 
-CONFIG_FILE="$ROOT_DIR/config/config.yaml"
 NGINX_CONF="$ROOT_DIR/nginx/gotosocial.conf"
 NGINX_CONF_ZKREML="$ROOT_DIR/nginx/zkreml.cz.conf"
 
 echo ""
-echo "==> Nastavení konfigurace..."
+echo "==> Nastavení nginx konfigurace..."
 
 # Záloha originálů pro idempotentní opakované spuštění
-[ -f "${CONFIG_FILE}.orig" ]      || cp "$CONFIG_FILE"      "${CONFIG_FILE}.orig"
-[ -f "${NGINX_CONF}.orig" ]       || cp "$NGINX_CONF"       "${NGINX_CONF}.orig"
+[ -f "${NGINX_CONF}.orig" ]        || cp "$NGINX_CONF"        "${NGINX_CONF}.orig"
 [ -f "${NGINX_CONF_ZKREML}.orig" ] || cp "$NGINX_CONF_ZKREML" "${NGINX_CONF_ZKREML}.orig"
 
 # Vždy pracuj z originálu
-cp "${CONFIG_FILE}.orig"       "$CONFIG_FILE"
 cp "${NGINX_CONF}.orig"        "$NGINX_CONF"
 cp "${NGINX_CONF_ZKREML}.orig" "$NGINX_CONF_ZKREML"
-
-# config.yaml – host
-sed -i "s|host: \".*\"|host: \"${GTS_DOMAIN}\"|" "$CONFIG_FILE"
-
-# config.yaml – account-domain (odkomentuj pouze při odlišné doméně)
-if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
-  sed -i "s|# account-domain: \".*\"|account-domain: \"${GTS_ACCOUNT_DOMAIN}\"|" "$CONFIG_FILE"
-fi
 
 # nginx gotosocial.conf – dosaď GTS_HOST
 sed -i "s|GTS_HOST|${GTS_DOMAIN}|g" "$NGINX_CONF"
@@ -112,8 +92,8 @@ if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
   sed -i "s|GTS_HOST|${GTS_DOMAIN}|g"               "$NGINX_CONF_ZKREML"
 fi
 
-# === Nasazení nginx konfigurací ===
-echo "==> Nasazení Nginx konfigurace..."
+# === Nasazení nginx HTTP konfigurace ===
+echo "==> Nasazení nginx HTTP konfigurace..."
 cp "$NGINX_CONF" /etc/nginx/sites-available/gotosocial
 ln -sf /etc/nginx/sites-available/gotosocial /etc/nginx/sites-enabled/gotosocial
 
@@ -126,31 +106,6 @@ fi
 nginx -t
 systemctl reload nginx
 
-# .env – vytvoř z example pokud neexistuje
-if [ ! -f "$ROOT_DIR/.env" ]; then
-  cp "$ROOT_DIR/.env.example" "$ROOT_DIR/.env"
-fi
-
-# === Spuštění kontejneru ===
-mkdir -p "$ROOT_DIR/data"
-echo "==> Spouštění kontejneru..."
-cd "$ROOT_DIR"
-$DC pull
-$DC up -d
-
-echo "==> Čekání na start GoToSocial (10 s)..."
-sleep 10
-
-# === Vytvoření admin účtu ===
-echo "==> Vytváření admin účtu..."
-$DC exec gotosocial /gotosocial/gotosocial admin account create \
-  --username "$ADMIN_USER" \
-  --email    "$ADMIN_EMAIL" \
-  --password "$ADMIN_PASS"
-
-$DC exec gotosocial /gotosocial/gotosocial admin account promote \
-  --username "$ADMIN_USER"
-
 # === SSL certifikáty ===
 echo ""
 echo "==> Získání SSL certifikátu pro ${GTS_DOMAIN}..."
@@ -161,6 +116,33 @@ if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
   certbot --nginx -d "$GTS_ACCOUNT_DOMAIN"
 fi
 
+# === Konfigurace docker-compose.yml ===
+echo "==> Konfigurace docker-compose.yml..."
+DC_FILE="$ROOT_DIR/docker-compose.yml"
+[ -f "${DC_FILE}.orig" ] || cp "$DC_FILE" "${DC_FILE}.orig"
+cp "${DC_FILE}.orig" "$DC_FILE"
+
+sed -i "s|GTS_HOST_PLACEHOLDER|${GTS_DOMAIN}|g" "$DC_FILE"
+
+if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
+  sed -i "s|ACCOUNT_DOMAIN_PLACEHOLDER|${GTS_ACCOUNT_DOMAIN}|g" "$DC_FILE"
+else
+  sed -i "s|ACCOUNT_DOMAIN_PLACEHOLDER|${GTS_DOMAIN}|g" "$DC_FILE"
+fi
+
+# === Spuštění kontejneru ===
+mkdir -p "$ROOT_DIR/data"
+echo "==> Spouštění kontejneru..."
+cd "$ROOT_DIR"
+$DC pull
+$DC up -d
+
+echo "==> Čekání na start GoToSocial (15 s)..."
+sleep 15
+
+echo "==> Stav kontejneru:"
+$DC ps
+
 # === Hotovo ===
 echo ""
 echo "==> Instalace dokončena!"
@@ -170,6 +152,13 @@ if [ "$SEPARATE_ACCOUNT_DOMAIN" = true ]; then
   echo "    Hlavní doména: https://${GTS_ACCOUNT_DOMAIN}"
   echo "    Účty budou mít formát @uživatel@${GTS_ACCOUNT_DOMAIN}"
 fi
+echo ""
+echo "Pro vytvoření admin účtu spusťte:"
+echo "    cd ${ROOT_DIR}"
+echo "    $DC exec gotosocial /gotosocial/gotosocial admin account create \\"
+echo "        --username <uživatel> --email <email> --password <heslo>"
+echo "    $DC exec gotosocial /gotosocial/gotosocial admin account promote \\"
+echo "        --username <uživatel>"
 echo ""
 echo "NEZAPOMENOUT nastavit DNS záznamy:"
 echo "    ${GTS_DOMAIN}  -> IP tohoto serveru"
