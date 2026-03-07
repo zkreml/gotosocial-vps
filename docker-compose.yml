@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  gotosocial:
+    image: superseriousbusiness/gotosocial:latest
+    container_name: gotosocial
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/gotosocial/storage
+      - ./config/config.yaml:/gotosocial/config.yaml
+    user: "1000:1000"
