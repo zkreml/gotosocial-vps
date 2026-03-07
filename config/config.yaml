@@ -4,11 +4,11 @@
 ################################
 
 # Vaše doména
-host: "social.vase-domena.cz"
+host: "GTS_HOST_PLACEHOLDER"
 
 # Pokud chcete oddělit doménu účtů od domény serveru
 # Např. účty @user@vase-domena.cz, ale server běží na social.vase-domena.cz
-# account-domain: "vase-domena.cz"
+# account-domain: "ACCOUNT_DOMAIN_PLACEHOLDER"
 
 protocol: "https"
 bind-address: "0.0.0.0"
