@@ -14,6 +14,7 @@ protocol: "https"
 bind-address: "0.0.0.0"
 port: 8080
 trusted-proxies:
+  - "172.18.0.1/16"
   - "127.0.0.1/32"
   - "::1"
 
@@ -46,8 +47,8 @@ accounts-reason-required: true
 accounts-allow-custom-css: false
 
 # Média
-media-image-max-size: 10485760    # 10 MiB
-media-video-max-size: 41943040    # 40 MiB
+media-local-max-size: "52428800" # 50 MiB
+media-video-max-size: 41943040 # 40 MiB
 media-description-min-chars: 0
 media-description-max-chars: 500
 media-remote-cache-days: 7
@@ -55,8 +56,8 @@ media-cleanup-from: "00:00"
 media-cleanup-every: "24h"
 
 # Emojis
-media-emoji-local-max-size: 51200    # 50 KiB
-media-emoji-remote-max-size: 102400  # 100 KiB
+media-emoji-local-max-size: 51200 # 50 KiB
+media-emoji-remote-max-size: 102400 # 100 KiB
 
 # Logy
 log-level: "info"

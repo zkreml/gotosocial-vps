@@ -3,12 +3,19 @@ services:
     image: superseriousbusiness/gotosocial:latest
     container_name: gotosocial
     restart: unless-stopped
+    entrypoint:
+      [
+        "/gotosocial/gotosocial",
+        "server",
+        "start",
+        "--config-path",
+        "/gotosocial/config.yaml",
+      ]
     environment:
-      - GTS_HOST=GTS_HOST_PLACEHOLDER
-      - GTS_ACCOUNT_DOMAIN=ACCOUNT_DOMAIN_PLACEHOLDER
-      - GTS_TRUSTED_PROXIES=127.0.0.1/32,172.18.0.1/16
+      - TZ=Europe/Prague
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./data:/gotosocial/storage
+      - ./config/config.yaml:/gotosocial/config.yaml
     user: "1000:1000"
